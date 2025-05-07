@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 
 const WorkItems = () => {
-  const { isConnected, selectedProject, workItems } = useAzureDevOps();
+  const { isConnected, selectedProjects, workItems } = useAzureDevOps();
   const [selectedWorkItem, setSelectedWorkItem] = useState<number | null>(null);
   
   if (!isConnected) {
@@ -27,12 +27,12 @@ const WorkItems = () => {
     );
   }
   
-  if (!selectedProject) {
+  if (selectedProjects.length === 0) {
     return (
       <AppLayout>
         <div className="container py-10 text-center">
-          <h1 className="text-2xl font-bold mb-2">No Project Selected</h1>
-          <p className="mb-4">Please select a project to view work items.</p>
+          <h1 className="text-2xl font-bold mb-2">No Projects Selected</h1>
+          <p className="mb-4">Please select at least one project to view work items.</p>
           <a href="/projects" className="text-brand-500 hover:underline">
             Go to projects
           </a>
@@ -50,8 +50,19 @@ const WorkItems = () => {
       <div className="h-full flex flex-col">
         <div className="border-b p-4 bg-background">
           <div className="container max-w-6xl">
-            <h1 className="text-2xl font-bold">{selectedProject.name}</h1>
-            <p className="text-muted-foreground">Work Items</p>
+            <h1 className="text-2xl font-bold">
+              {selectedProjects.length === 1 
+                ? selectedProjects[0].name 
+                : `${selectedProjects.length} Projects Selected`}
+            </h1>
+            <p className="text-muted-foreground flex flex-wrap gap-1">
+              Work Items for: 
+              {selectedProjects.map((project, index) => (
+                <span key={project.id} className="font-medium">
+                  {project.name}{index < selectedProjects.length - 1 ? ',' : ''}
+                </span>
+              ))}
+            </p>
           </div>
         </div>
         

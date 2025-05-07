@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useContext, ReactNode } from 'react';
 import { toast } from "sonner";
 import { AzureDevOpsConnection, Project, WorkItem, WorkItemHierarchy, WorkItemQueryResult } from '../types/azure-devops';
@@ -7,7 +6,7 @@ interface AzureDevOpsContextType {
   connection: AzureDevOpsConnection | null;
   isConnected: boolean;
   projects: Project[];
-  selectedProject: Project | null;
+  selectedProjects: Project[];
   workItems: WorkItem[];
   workItemHierarchy: WorkItemHierarchy[];
   loading: boolean;
@@ -16,7 +15,10 @@ interface AzureDevOpsContextType {
   disconnect: () => void;
   fetchProjects: () => Promise<Project[]>;
   selectProject: (project: Project) => void;
-  fetchWorkItems: (projectId: string) => Promise<WorkItem[]>;
+  toggleProjectSelection: (project: Project) => void;
+  selectAllProjects: () => void;
+  unselectAllProjects: () => void;
+  fetchWorkItems: (projectIds: string[]) => Promise<WorkItem[]>;
   buildWorkItemHierarchy: (items: WorkItem[]) => WorkItemHierarchy[];
   toggleItemExpansion: (itemId: number) => void;
 }
@@ -29,8 +31,8 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
   );
   const [isConnected, setIsConnected] = useState<boolean>(!!connection);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(
-    JSON.parse(localStorage.getItem('selectedProject') || 'null')
+  const [selectedProjects, setSelectedProjects] = useState<Project[]>(
+    JSON.parse(localStorage.getItem('selectedProjects') || '[]')
   );
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [workItemHierarchy, setWorkItemHierarchy] = useState<WorkItemHierarchy[]>([]);
@@ -69,10 +71,10 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
 
   const disconnect = () => {
     localStorage.removeItem('azureConnection');
-    localStorage.removeItem('selectedProject');
+    localStorage.removeItem('selectedProjects');
     setConnection(null);
     setIsConnected(false);
-    setSelectedProject(null);
+    setSelectedProjects([]);
     setProjects([]);
     setWorkItems([]);
     setWorkItemHierarchy([]);
@@ -117,6 +119,13 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
       ];
       
       setProjects(mockProjects);
+      
+      // Select all projects by default
+      if (selectedProjects.length === 0) {
+        setSelectedProjects(mockProjects);
+        localStorage.setItem('selectedProjects', JSON.stringify(mockProjects));
+      }
+      
       setLoading(false);
       return mockProjects;
     } catch (err) {
@@ -127,32 +136,79 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
     }
   };
 
+  // Update project selection to support multiple selections
   const selectProject = (project: Project) => {
-    setSelectedProject(project);
-    localStorage.setItem('selectedProject', JSON.stringify(project));
+    const updatedSelection = [project];
+    setSelectedProjects(updatedSelection);
+    localStorage.setItem('selectedProjects', JSON.stringify(updatedSelection));
+    
     // Fetch work items for this project
-    fetchWorkItems(project.id);
+    fetchWorkItems([project.id]);
+  };
+  
+  const toggleProjectSelection = (project: Project) => {
+    const isSelected = selectedProjects.some(p => p.id === project.id);
+    let updatedSelection: Project[];
+    
+    if (isSelected) {
+      updatedSelection = selectedProjects.filter(p => p.id !== project.id);
+    } else {
+      updatedSelection = [...selectedProjects, project];
+    }
+    
+    setSelectedProjects(updatedSelection);
+    localStorage.setItem('selectedProjects', JSON.stringify(updatedSelection));
+    
+    // Fetch work items for all selected projects
+    if (updatedSelection.length > 0) {
+      fetchWorkItems(updatedSelection.map(p => p.id));
+    } else {
+      // Clear work items if no projects selected
+      setWorkItems([]);
+      setWorkItemHierarchy([]);
+    }
+  };
+  
+  const selectAllProjects = () => {
+    setSelectedProjects(projects);
+    localStorage.setItem('selectedProjects', JSON.stringify(projects));
+    
+    // Fetch work items for all projects
+    fetchWorkItems(projects.map(p => p.id));
+  };
+  
+  const unselectAllProjects = () => {
+    setSelectedProjects([]);
+    localStorage.setItem('selectedProjects', JSON.stringify([]));
+    
+    // Clear work items if no projects selected
+    setWorkItems([]);
+    setWorkItemHierarchy([]);
   };
 
-  const fetchWorkItems = async (projectId: string): Promise<WorkItem[]> => {
+  const fetchWorkItems = async (projectIds: string[]): Promise<WorkItem[]> => {
+    if (projectIds.length === 0) return [];
+    
     setLoading(true);
     setError(null);
     
     try {
-      // In a real app, fetch work items from Azure DevOps API
-      // For demo: return mock work items
+      // Fetch work items for all selected projects
+      const allWorkItems: WorkItem[] = [];
       
-      // Generate a hierarchy of work items
-      const mockWorkItems: WorkItem[] = generateMockWorkItems();
+      for (const projectId of projectIds) {
+        const projectWorkItems = generateMockWorkItems(projectId);
+        allWorkItems.push(...projectWorkItems);
+      }
       
-      setWorkItems(mockWorkItems);
+      setWorkItems(allWorkItems);
       
-      // Build hierarchy
-      const hierarchy = buildWorkItemHierarchy(mockWorkItems);
+      // Build hierarchy with projects at the top level
+      const hierarchy = buildWorkItemHierarchy(allWorkItems);
       setWorkItemHierarchy(hierarchy);
       
       setLoading(false);
-      return mockWorkItems;
+      return allWorkItems;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch work items';
       setError(errorMessage);
@@ -162,12 +218,20 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
   };
 
   // Helper function to generate mock work items with parent-child relationships
-  const generateMockWorkItems = (): WorkItem[] => {
+  const generateMockWorkItems = (projectId: string): WorkItem[] => {
     // Generate epics, features, user stories, and tasks
     const workItems: WorkItem[] = [];
+    const project = projects.find(p => p.id === projectId);
     
-    // Create 2 epics
-    for (let epicId = 1; epicId <= 2; epicId++) {
+    // Track the project association for each work item
+    const projectRef = {
+      id: parseInt(projectId),
+      name: project?.name || `Project ${projectId}`,
+    };
+    
+    // Create 2 epics per project
+    for (let epicIndex = 0; epicIndex < 2; epicIndex++) {
+      const epicId = parseInt(`${projectId}${epicIndex + 1}`); // e.g. project 1, epic 1 = 11
       const epic: WorkItem = {
         id: epicId,
         rev: 1,
@@ -177,17 +241,28 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
           'System.WorkItemType': 'Epic',
           'System.CreatedDate': new Date().toISOString(),
           'System.ChangedDate': new Date().toISOString(),
-          'System.Description': `This is Epic ${epicId}`,
-          'Microsoft.VSTS.Common.Priority': 1
+          'System.Description': `This is Epic ${epicId} in ${project?.name}`,
+          'Microsoft.VSTS.Common.Priority': 1,
+          'System.TeamProject': project?.name,
+          'System.AreaPath': project?.name
         },
         url: `https://dev.azure.com/org/project/_apis/wit/workItems/${epicId}`,
-        relations: []
+        relations: [
+          {
+            rel: 'System.LinkTypes.Hierarchy-Reverse',
+            url: `https://dev.azure.com/org/project/_apis/projects/${projectId}`,
+            attributes: {
+              name: 'Parent'
+            }
+          }
+        ],
+        projectRef: projectRef
       };
       workItems.push(epic);
       
       // Create 2-3 features per epic
       for (let featureIndex = 0; featureIndex < 2 + Math.floor(Math.random() * 2); featureIndex++) {
-        const featureId = workItems.length + 1;
+        const featureId = parseInt(`${epicId}${featureIndex + 1}`);
         const feature: WorkItem = {
           id: featureId,
           rev: 1,
@@ -197,8 +272,10 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
             'System.WorkItemType': 'Feature',
             'System.CreatedDate': new Date().toISOString(),
             'System.ChangedDate': new Date().toISOString(),
-            'System.Description': `This is Feature ${featureId}`,
-            'Microsoft.VSTS.Common.Priority': 2
+            'System.Description': `This is Feature ${featureId} in ${project?.name}`,
+            'Microsoft.VSTS.Common.Priority': 2,
+            'System.TeamProject': project?.name,
+            'System.AreaPath': project?.name
           },
           url: `https://dev.azure.com/org/project/_apis/wit/workItems/${featureId}`,
           relations: [
@@ -209,7 +286,8 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
                 name: 'Parent'
               }
             }
-          ]
+          ],
+          projectRef: projectRef
         };
         workItems.push(feature);
         
@@ -299,14 +377,23 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
       // Extract ID from URL
       const urlParts = parentRelation.url.split('/');
       const parentId = parseInt(urlParts[urlParts.length - 1]);
-      return parentId;
+      return isNaN(parentId) ? null : parentId;
     };
     
     // Create a map of parent to children
     const childrenMap = new Map<number, number[]>();
     
-    // Identify all children relationships
+    // Group work items by project first
+    const projectWorkItems = new Map<string, WorkItem[]>();
+    
     items.forEach(item => {
+      if (item.projectRef) {
+        const projectId = item.projectRef.id.toString();
+        const projectItems = projectWorkItems.get(projectId) || [];
+        projectItems.push(item);
+        projectWorkItems.set(projectId, projectItems);
+      }
+      
       const parentId = findParentId(item);
       if (parentId !== null) {
         const currentChildren = childrenMap.get(parentId) || [];
@@ -321,19 +408,99 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
       
       return {
         item,
-        children: children.map(childId => buildHierarchy(childId, level + 1)),
+        children: children
+          .map(childId => buildHierarchy(childId, level + 1))
+          .sort((a, b) => {
+            // Sort by work item type: Epics first, then Features, then User Stories, then Tasks
+            const typeOrder = {
+              'Epic': 1,
+              'Feature': 2,
+              'User Story': 3,
+              'Task': 4
+            };
+            const typeA = a.item.fields['System.WorkItemType'];
+            const typeB = b.item.fields['System.WorkItemType'];
+            
+            return (typeOrder[typeA as keyof typeof typeOrder] || 999) - 
+                   (typeOrder[typeB as keyof typeof typeOrder] || 999);
+          }),
         level,
-        isExpanded: true, // Default to expanded
+        isExpanded: level < 2, // Auto-expand the first two levels
       };
     };
     
-    // Find root items (no parent)
-    const rootItemIds = items
-      .filter(item => !findParentId(item))
-      .map(item => item.id);
+    // Build project nodes as the top level
+    const result: WorkItemHierarchy[] = [];
     
-    // Build hierarchy starting from root items
-    return rootItemIds.map(id => buildHierarchy(id, 0));
+    selectedProjects.forEach(project => {
+      const projectId = parseInt(project.id);
+      const projectItems = projectWorkItems.get(project.id) || [];
+      
+      // Find epics (root items) for this project
+      const rootItems = projectItems.filter(item => {
+        const parentId = findParentId(item);
+        // Check if parent is a project or not a work item
+        return parentId === projectId || 
+               (parentId !== null && !itemsMap.has(parentId));
+      });
+      
+      if (rootItems.length > 0) {
+        // Create virtual project item
+        const projectItem: WorkItem = {
+          id: projectId,
+          rev: 1,
+          fields: {
+            'System.Title': project.name,
+            'System.State': 'Active',
+            'System.WorkItemType': 'Project',
+            'System.CreatedDate': project.lastUpdateTime,
+            'System.ChangedDate': project.lastUpdateTime,
+            'System.Description': project.description || `Project: ${project.name}`
+          },
+          url: project.url,
+          projectRef: {
+            id: projectId,
+            name: project.name
+          }
+        };
+        
+        // Add virtual project as a parent of root items
+        rootItems.forEach(item => {
+          if (!item.relations) item.relations = [];
+          
+          // Update or add the relation
+          const existingRelationIndex = item.relations.findIndex(rel => 
+            rel.rel === 'System.LinkTypes.Hierarchy-Reverse' && 
+            rel.url.includes(`/projects/${project.id}`));
+          
+          if (existingRelationIndex >= 0) {
+            item.relations[existingRelationIndex].url = `https://dev.azure.com/org/project/_apis/projects/${project.id}`;
+          } else {
+            item.relations.push({
+              rel: 'System.LinkTypes.Hierarchy-Reverse',
+              url: `https://dev.azure.com/org/project/_apis/projects/${project.id}`,
+              attributes: {
+                name: 'Parent'
+              }
+            });
+          }
+          
+          // Update children map
+          const currentChildren = childrenMap.get(projectId) || [];
+          if (!currentChildren.includes(item.id)) {
+            childrenMap.set(projectId, [...currentChildren, item.id]);
+          }
+        });
+        
+        // Add to items map
+        itemsMap.set(projectId, projectItem);
+        
+        // Build hierarchy from project
+        result.push(buildHierarchy(projectId, 0));
+      }
+    });
+    
+    return result;
   };
 
   const toggleItemExpansion = (itemId: number) => {
@@ -355,11 +522,17 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
   // Check if we have a saved connection on mount
   React.useEffect(() => {
     if (connection && isConnected) {
-      fetchProjects();
-      
-      if (selectedProject) {
-        fetchWorkItems(selectedProject.id);
-      }
+      fetchProjects().then(fetchedProjects => {
+        // If we have selected projects saved, fetch their work items
+        if (selectedProjects.length > 0) {
+          fetchWorkItems(selectedProjects.map(p => p.id));
+        } else if (fetchedProjects.length > 0) {
+          // Otherwise, select all projects by default
+          setSelectedProjects(fetchedProjects);
+          localStorage.setItem('selectedProjects', JSON.stringify(fetchedProjects));
+          fetchWorkItems(fetchedProjects.map(p => p.id));
+        }
+      });
     }
   }, []);
 
@@ -369,7 +542,7 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
         connection,
         isConnected,
         projects,
-        selectedProject,
+        selectedProjects,
         workItems,
         workItemHierarchy,
         loading,
@@ -378,6 +551,9 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
         disconnect,
         fetchProjects,
         selectProject,
+        toggleProjectSelection,
+        selectAllProjects,
+        unselectAllProjects,
         fetchWorkItems,
         buildWorkItemHierarchy,
         toggleItemExpansion,

@@ -16,11 +16,14 @@ export const WorkItemRow: React.FC<WorkItemRowProps> = ({ workItemHierarchy }) =
   const { item, children, isExpanded } = workItemHierarchy;
   
   const hasChildren = children && children.length > 0;
+  const workItemType = item.fields["System.WorkItemType"];
+  const isProject = workItemType === "Project";
   
   // Get work item type-specific styling
   const getWorkItemTypeStyles = () => {
-    const type = item.fields["System.WorkItemType"];
-    switch (type) {
+    switch (workItemType) {
+      case "Project":
+        return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300";
       case "Epic":
         return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
       case "Feature":
@@ -62,6 +65,7 @@ export const WorkItemRow: React.FC<WorkItemRowProps> = ({ workItemHierarchy }) =
     <div
       className={cn(
         "group flex items-center py-2 px-2 rounded-md hover:bg-muted/50 text-sm",
+        isProject && "font-semibold"
       )}
     >
       <div className="flex-1 flex items-center min-w-0">
@@ -84,16 +88,18 @@ export const WorkItemRow: React.FC<WorkItemRowProps> = ({ workItemHierarchy }) =
         
         <div className="truncate flex-1 flex items-center">
           <Badge variant="outline" className={cn("mr-2 font-medium", getWorkItemTypeStyles())}>
-            {item.fields["System.WorkItemType"]}
+            {workItemType}
           </Badge>
           
-          <span className="truncate font-medium">
+          <span className={cn("truncate", isProject ? "font-semibold" : "font-medium")}>
             {item.fields["System.Title"]}
           </span>
           
-          <Badge variant="outline" className={cn("ml-2", getStateStyles())}>
-            {item.fields["System.State"]}
-          </Badge>
+          {!isProject && (
+            <Badge variant="outline" className={cn("ml-2", getStateStyles())}>
+              {item.fields["System.State"]}
+            </Badge>
+          )}
           
           {item.fields["System.AssignedTo"] && (
             <span className="ml-2 text-xs text-muted-foreground truncate">
@@ -104,7 +110,7 @@ export const WorkItemRow: React.FC<WorkItemRowProps> = ({ workItemHierarchy }) =
       </div>
       
       <div className="text-xs text-muted-foreground whitespace-nowrap">
-        #{item.id}
+        {!isProject && `#${item.id}`}
       </div>
     </div>
   );

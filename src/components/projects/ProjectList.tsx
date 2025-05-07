@@ -2,13 +2,14 @@
 import React from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAzureDevOps } from "@/context/AzureDevOpsContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Project } from "@/types/azure-devops";
 import { format } from "date-fns";
 
 export const ProjectList: React.FC = () => {
-  const { projects, loading, selectProject, selectedProject } = useAzureDevOps();
+  const { projects, loading, toggleProjectSelection, selectedProjects } = useAzureDevOps();
   
   React.useEffect(() => {
     // This effect is left empty intentionally because fetching is handled in the context
@@ -43,8 +44,12 @@ export const ProjectList: React.FC = () => {
     );
   }
   
-  const handleSelectProject = (project: Project) => {
-    selectProject(project);
+  const handleToggleProjectSelection = (project: Project) => {
+    toggleProjectSelection(project);
+  };
+  
+  const isProjectSelected = (projectId: string) => {
+    return selectedProjects.some(p => p.id === projectId);
   };
   
   return (
@@ -52,13 +57,22 @@ export const ProjectList: React.FC = () => {
       {projects.map(project => (
         <Card 
           key={project.id} 
-          className={selectedProject?.id === project.id ? "border-primary/50 shadow-md" : ""}
+          className={isProjectSelected(project.id) ? "border-primary/50 shadow-md" : ""}
         >
           <CardHeader>
-            <CardTitle>{project.name}</CardTitle>
-            <CardDescription>
-              {project.visibility} • Last updated {format(new Date(project.lastUpdateTime), "MMM d, yyyy")}
-            </CardDescription>
+            <div className="flex items-start gap-2">
+              <Checkbox 
+                id={`project-${project.id}`}
+                checked={isProjectSelected(project.id)}
+                onCheckedChange={() => handleToggleProjectSelection(project)}
+              />
+              <div>
+                <CardTitle>{project.name}</CardTitle>
+                <CardDescription>
+                  {project.visibility} • Last updated {format(new Date(project.lastUpdateTime), "MMM d, yyyy")}
+                </CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
@@ -66,11 +80,11 @@ export const ProjectList: React.FC = () => {
             </p>
             <div className="flex justify-end">
               <Button 
-                variant={selectedProject?.id === project.id ? "default" : "outline"} 
+                variant={isProjectSelected(project.id) ? "default" : "outline"} 
                 size="sm"
-                onClick={() => handleSelectProject(project)}
+                onClick={() => handleToggleProjectSelection(project)}
               >
-                {selectedProject?.id === project.id ? "Selected" : "Select Project"}
+                {isProjectSelected(project.id) ? "Selected" : "Select Project"}
               </Button>
             </div>
           </CardContent>

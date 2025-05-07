@@ -16,6 +16,11 @@ export interface Project {
   lastUpdateTime: string;
 }
 
+export interface ProjectRef {
+  id: number;
+  name: string;
+}
+
 export interface WorkItem {
   id: number;
   rev: number;
@@ -23,22 +28,24 @@ export interface WorkItem {
     'System.Title': string;
     'System.State': string;
     'System.WorkItemType': string;
-    'System.CreatedDate': string;
-    'System.ChangedDate': string;
+    'System.CreatedDate'?: string;
+    'System.ChangedDate'?: string;
     'System.Tags'?: string;
     'System.Description'?: string;
+    'System.TeamProject'?: string;
+    'System.AreaPath'?: string;
+    'System.IterationPath'?: string;
     'System.AssignedTo'?: {
       displayName: string;
       uniqueName: string;
       imageUrl?: string;
     };
     'Microsoft.VSTS.Common.Priority'?: number;
-    'System.AreaPath'?: string;
-    'System.IterationPath'?: string;
     [key: string]: any;
   };
   relations?: WorkItemRelation[];
   url: string;
+  projectRef?: ProjectRef;
 }
 
 export interface WorkItemRelation {
