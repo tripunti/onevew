@@ -39,7 +39,7 @@ export const AppSidebar = () => {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton 
-                variant={isActive("/") ? "default" : "ghost"}
+                variant={isActive("/") ? "default" : "outline"}
                 isActive={isActive("/")}
                 asChild
               >
@@ -54,7 +54,7 @@ export const AppSidebar = () => {
               <>
                 <SidebarMenuItem>
                   <SidebarMenuButton 
-                    variant={isActive("/projects") ? "default" : "ghost"} 
+                    variant={isActive("/projects") ? "default" : "outline"} 
                     isActive={isActive("/projects")}
                     asChild
                   >
@@ -72,7 +72,7 @@ export const AppSidebar = () => {
                 
                 <SidebarMenuItem>
                   <SidebarMenuButton 
-                    variant={isActive("/work-items") ? "default" : "ghost"} 
+                    variant={isActive("/work-items") ? "default" : "outline"} 
                     isActive={isActive("/work-items")}
                     asChild
                   >
@@ -94,7 +94,7 @@ export const AppSidebar = () => {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton 
-                  variant="ghost"
+                  variant="outline"
                   className="text-destructive hover:text-destructive"
                   onClick={disconnect}
                 >
