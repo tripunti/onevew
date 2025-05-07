@@ -4,29 +4,30 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { useAzureDevOps } from "@/context/AzureDevOpsContext";
 import { ProjectList } from "@/components/projects/ProjectList";
 import { Button } from "@/components/ui/button";
-import { Check, X } from "lucide-react";
+import { Check, X, ArrowRight } from "lucide-react";
+import { Link, Navigate } from "react-router-dom";
 
 const Projects = () => {
-  const { isConnected, fetchProjects, selectedProjects, selectAllProjects, unselectAllProjects } = useAzureDevOps();
+  const { 
+    isConnected, 
+    fetchProjects, 
+    selectedProjects, 
+    selectAllProjects, 
+    unselectAllProjects,
+    loading
+  } = useAzureDevOps();
   
   useEffect(() => {
     if (isConnected) {
+      console.log("Projects page: Fetching projects");
       fetchProjects();
     }
   }, [isConnected]);
   
+  console.log("Projects page: Selected projects:", selectedProjects);
+  
   if (!isConnected) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Not Connected</h1>
-          <p className="mb-4">Please connect to Azure DevOps first.</p>
-          <a href="/" className="text-brand-500 hover:underline">
-            Go to connection page
-          </a>
-        </div>
-      </div>
-    );
+    return <Navigate to="/" replace />;
   }
   
   return (
@@ -44,6 +45,7 @@ const Projects = () => {
               size="sm"
               onClick={selectAllProjects}
               className="flex items-center gap-1"
+              disabled={loading}
             >
               <Check className="h-4 w-4" /> Select All
             </Button>
@@ -53,6 +55,7 @@ const Projects = () => {
               size="sm"
               onClick={unselectAllProjects}
               className="flex items-center gap-1"
+              disabled={loading}
             >
               <X className="h-4 w-4" /> Unselect All
             </Button>
@@ -61,9 +64,12 @@ const Projects = () => {
               <Button 
                 variant="default" 
                 size="sm"
+                className="flex items-center gap-1"
                 asChild
               >
-                <a href="/work-items">View Work Items ({selectedProjects.length} projects)</a>
+                <Link to="/work-items">
+                  View Work Items ({selectedProjects.length} projects) <ArrowRight className="h-4 w-4 ml-1" />
+                </Link>
               </Button>
             )}
           </div>

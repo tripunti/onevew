@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
 import { toast } from "sonner";
 import { AzureDevOpsConnection, Project, WorkItem, WorkItemHierarchy, WorkItemQueryResult } from '../types/azure-devops';
 
@@ -156,20 +156,24 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
       updatedSelection = [...selectedProjects, project];
     }
     
+    console.log("Updated project selection:", updatedSelection);
     setSelectedProjects(updatedSelection);
     localStorage.setItem('selectedProjects', JSON.stringify(updatedSelection));
     
     // Fetch work items for all selected projects
     if (updatedSelection.length > 0) {
+      console.log("Fetching work items after project selection change");
       fetchWorkItems(updatedSelection.map(p => p.id));
     } else {
       // Clear work items if no projects selected
+      console.log("No projects selected, clearing work items");
       setWorkItems([]);
       setWorkItemHierarchy([]);
     }
   };
   
   const selectAllProjects = () => {
+    console.log("Selecting all projects:", projects);
     setSelectedProjects(projects);
     localStorage.setItem('selectedProjects', JSON.stringify(projects));
     
@@ -178,6 +182,7 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
   };
   
   const unselectAllProjects = () => {
+    console.log("Unselecting all projects");
     setSelectedProjects([]);
     localStorage.setItem('selectedProjects', JSON.stringify([]));
     
@@ -186,9 +191,11 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
     setWorkItemHierarchy([]);
   };
 
+  // Add debug logs to fetchWorkItems function
   const fetchWorkItems = async (projectIds: string[]): Promise<WorkItem[]> => {
     if (projectIds.length === 0) return [];
     
+    console.log("fetchWorkItems called with project IDs:", projectIds);
     setLoading(true);
     setError(null);
     
@@ -197,20 +204,25 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
       const allWorkItems: WorkItem[] = [];
       
       for (const projectId of projectIds) {
+        console.log(`Generating mock work items for project ${projectId}`);
         const projectWorkItems = generateMockWorkItems(projectId);
         allWorkItems.push(...projectWorkItems);
       }
       
+      console.log("Total work items generated:", allWorkItems.length);
       setWorkItems(allWorkItems);
       
       // Build hierarchy with projects at the top level
+      console.log("Building work item hierarchy");
       const hierarchy = buildWorkItemHierarchy(allWorkItems);
+      console.log("Hierarchy built:", hierarchy);
       setWorkItemHierarchy(hierarchy);
       
       setLoading(false);
       return allWorkItems;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch work items';
+      console.error("Error fetching work items:", errorMessage);
       setError(errorMessage);
       setLoading(false);
       return [];
@@ -520,22 +532,24 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
   };
   
   // Check if we have a saved connection on mount
-  React.useEffect(() => {
+  useEffect(() => {
     if (connection && isConnected) {
       fetchProjects().then(fetchedProjects => {
         // If we have selected projects saved, fetch their work items
         if (selectedProjects.length > 0) {
+          console.log("Fetching work items for selected projects:", selectedProjects);
           fetchWorkItems(selectedProjects.map(p => p.id));
         } else if (fetchedProjects.length > 0) {
           // Otherwise, select all projects by default
           setSelectedProjects(fetchedProjects);
           localStorage.setItem('selectedProjects', JSON.stringify(fetchedProjects));
+          console.log("Fetching work items for all projects:", fetchedProjects);
           fetchWorkItems(fetchedProjects.map(p => p.id));
         }
       });
     }
-  }, []);
-
+  }, [isConnected]);
+  
   return (
     <AzureDevOpsContext.Provider
       value={{

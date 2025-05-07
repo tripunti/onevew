@@ -5,9 +5,20 @@ import { useAzureDevOps } from "@/context/AzureDevOpsContext";
 import { WorkItemRow } from "./WorkItemRow";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 
 export const WorkItemList: React.FC = () => {
-  const { workItemHierarchy, loading } = useAzureDevOps();
+  const { workItemHierarchy, loading, selectedProjects, fetchWorkItems } = useAzureDevOps();
+  
+  console.log("WorkItemList - workItemHierarchy:", workItemHierarchy);
+  console.log("WorkItemList - loading:", loading);
+  
+  const handleRefresh = () => {
+    if (selectedProjects.length > 0) {
+      fetchWorkItems(selectedProjects.map(p => p.id));
+    }
+  };
   
   if (loading) {
     return (
@@ -22,10 +33,20 @@ export const WorkItemList: React.FC = () => {
     );
   }
   
-  if (!workItemHierarchy.length) {
+  if (!workItemHierarchy || workItemHierarchy.length === 0) {
     return (
-      <div className="p-6 text-center text-muted-foreground">
-        No work items found. Select a project to view work items.
+      <div className="p-6 flex flex-col items-center justify-center h-full">
+        <p className="text-center text-muted-foreground mb-4">
+          No work items found for the selected projects.
+        </p>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={handleRefresh}
+          className="flex items-center gap-1"
+        >
+          <RefreshCw className="h-4 w-4" /> Refresh Work Items
+        </Button>
       </div>
     );
   }

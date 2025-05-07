@@ -1,44 +1,42 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAzureDevOps } from "@/context/AzureDevOpsContext";
 import { WorkItemList } from "@/components/work-items/WorkItemList";
 import { WorkItemDetail } from "@/components/work-items/WorkItemDetail";
-import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 
 const WorkItems = () => {
-  const { isConnected, selectedProjects, workItems } = useAzureDevOps();
+  const { 
+    isConnected, 
+    selectedProjects, 
+    workItems, 
+    workItemHierarchy,
+    loading,
+    fetchWorkItems 
+  } = useAzureDevOps();
+  
   const [selectedWorkItem, setSelectedWorkItem] = useState<number | null>(null);
   
+  // Fetch work items when the component mounts
+  useEffect(() => {
+    if (selectedProjects.length > 0) {
+      console.log("WorkItems page: Fetching work items for selected projects");
+      fetchWorkItems(selectedProjects.map(p => p.id));
+    }
+  }, [selectedProjects]);
+  
+  console.log("WorkItems page: Current hierarchy:", workItemHierarchy);
+  console.log("WorkItems page: Selected projects:", selectedProjects);
+  
   if (!isConnected) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Not Connected</h1>
-          <p className="mb-4">Please connect to Azure DevOps first.</p>
-          <a href="/" className="text-brand-500 hover:underline">
-            Go to connection page
-          </a>
-        </div>
-      </div>
-    );
+    return <Navigate to="/" replace />;
   }
   
   if (selectedProjects.length === 0) {
-    return (
-      <AppLayout>
-        <div className="container py-10 text-center">
-          <h1 className="text-2xl font-bold mb-2">No Projects Selected</h1>
-          <p className="mb-4">Please select at least one project to view work items.</p>
-          <a href="/projects" className="text-brand-500 hover:underline">
-            Go to projects
-          </a>
-        </div>
-      </AppLayout>
-    );
+    return <Navigate to="/projects" replace />;
   }
   
   const currentWorkItem = selectedWorkItem 
