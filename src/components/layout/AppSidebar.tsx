@@ -29,7 +29,7 @@ export const AppSidebar = () => {
     <Sidebar>
       <SidebarHeader>
         <Link to="/" className="flex items-center gap-2 px-2 py-1">
-          <span className="font-bold text-xl">DevOps Explorer</span>
+          <span className="font-bold text-xl">OneVew</span>
         </Link>
       </SidebarHeader>
       
