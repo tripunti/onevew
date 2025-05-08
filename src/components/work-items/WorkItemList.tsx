@@ -1,4 +1,3 @@
-
 import React from "react";
 import { WorkItemHierarchy } from "@/types/azure-devops";
 import { useAzureDevOps } from "@/context/AzureDevOpsContext";
@@ -9,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 
 export const WorkItemList: React.FC = () => {
-  const { workItemHierarchy, loading, selectedProjects, fetchWorkItems } = useAzureDevOps();
+  const { workItemHierarchy, loading, selectedProjects, fetchWorkItems, workItems } = useAzureDevOps();
   
   console.log("WorkItemList - workItemHierarchy:", workItemHierarchy);
   console.log("WorkItemList - loading:", loading);
@@ -34,6 +33,24 @@ export const WorkItemList: React.FC = () => {
   }
   
   if (!workItemHierarchy || workItemHierarchy.length === 0) {
+    // Fallback: show all work items flat if any exist
+    if (workItems && workItems.length > 0) {
+      return (
+        <div className="p-6 flex flex-col items-center justify-center h-full">
+          <p className="text-center text-muted-foreground mb-4">
+            No hierarchy found. Showing all work items:
+          </p>
+          <div className="w-full max-w-2xl mx-auto">
+            {workItems.map(item => (
+              <div key={item.id} className="border rounded p-2 mb-2 flex flex-col">
+                <span className="font-medium">#{item.id} - {item.fields['System.Title']}</span>
+                <span className="text-xs text-muted-foreground">{item.fields['System.WorkItemType']} | {item.fields['System.State']}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="p-6 flex flex-col items-center justify-center h-full">
         <p className="text-center text-muted-foreground mb-4">

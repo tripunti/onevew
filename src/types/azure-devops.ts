@@ -1,4 +1,3 @@
-
 // Azure DevOps API Types
 export interface AzureDevOpsConnection {
   organizationUrl: string;
@@ -17,12 +16,12 @@ export interface Project {
 }
 
 export interface ProjectRef {
-  id: number;
+  id: string;
   name: string;
 }
 
 export interface WorkItem {
-  id: number;
+  id: string;
   rev: number;
   fields: {
     'System.Title': string;
@@ -70,7 +69,7 @@ export interface WorkItemQuery {
 }
 
 export interface WorkItemQueryResult {
-  workItems: { id: number; url: string }[];
+  workItems: { id: string; url: string }[];
   asOf: string;
   queryType: string;
   queryResultType: string;

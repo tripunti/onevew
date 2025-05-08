@@ -1,9 +1,10 @@
-
 import React, { useState } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { ConnectionForm } from "@/components/connection/ConnectionForm";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -11,6 +12,7 @@ interface AppLayoutProps {
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showConnectionForm, setShowConnectionForm] = useState(false);
 
   return (
     <SidebarProvider defaultOpen={true}>
@@ -30,7 +32,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <div className="flex-1" />
             <nav className="flex items-center space-x-2">
               <Button variant="ghost" size="sm">Help</Button>
-              <Button variant="ghost" size="sm">Settings</Button>
+              <Button variant="ghost" size="sm" onClick={() => setShowConnectionForm(true)}>Settings</Button>
               <Button variant="ghost" size="sm">Profile</Button>
             </nav>
           </header>
@@ -38,6 +40,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <main className="flex-1 overflow-auto">
             {children}
           </main>
+          <Dialog open={showConnectionForm} onOpenChange={setShowConnectionForm}>
+            <DialogContent className="max-w-6xl w-full">
+              <ConnectionForm />
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </SidebarProvider>

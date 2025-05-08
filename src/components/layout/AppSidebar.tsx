@@ -1,4 +1,3 @@
-
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -45,31 +44,13 @@ export const AppSidebar = () => {
               >
                 <Link to="/">
                   <Home className="mr-2 h-4 w-4" />
-                  <span>Connection</span>
+                  <span>Dashboard</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             
             {isConnected && (
               <>
-                <SidebarMenuItem>
-                  <SidebarMenuButton 
-                    variant={isActive("/projects") ? "default" : "outline"} 
-                    isActive={isActive("/projects")}
-                    asChild
-                  >
-                    <Link to="/projects">
-                      <FolderKanban className="mr-2 h-4 w-4" />
-                      <span>Projects</span>
-                      {selectedProjects.length > 0 && (
-                        <span className="ml-auto bg-primary/20 text-primary rounded-full px-2 py-0.5 text-xs">
-                          {selectedProjects.length}
-                        </span>
-                      )}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                
                 <SidebarMenuItem>
                   <SidebarMenuButton 
                     variant={isActive("/work-items") ? "default" : "outline"} 

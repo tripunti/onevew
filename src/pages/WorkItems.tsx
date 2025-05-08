@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -7,6 +6,7 @@ import { WorkItemList } from "@/components/work-items/WorkItemList";
 import { WorkItemDetail } from "@/components/work-items/WorkItemDetail";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
+import { ProjectList } from "@/components/projects/ProjectList";
 
 const WorkItems = () => {
   const { 
@@ -18,9 +18,9 @@ const WorkItems = () => {
     fetchWorkItems 
   } = useAzureDevOps();
   
-  const [selectedWorkItem, setSelectedWorkItem] = useState<number | null>(null);
+  const [selectedWorkItem, setSelectedWorkItem] = useState<string | null>(null);
   
-  // Fetch work items when the component mounts
+  // Fetch work items when the component mounts or selectedProjects changes
   useEffect(() => {
     if (selectedProjects.length > 0) {
       console.log("WorkItems page: Fetching work items for selected projects");
@@ -35,10 +35,6 @@ const WorkItems = () => {
     return <Navigate to="/" replace />;
   }
   
-  if (selectedProjects.length === 0) {
-    return <Navigate to="/projects" replace />;
-  }
-  
   const currentWorkItem = selectedWorkItem 
     ? workItems.find(item => item.id === selectedWorkItem) 
     : null;
@@ -46,6 +42,16 @@ const WorkItems = () => {
   return (
     <AppLayout>
       <div className="h-full flex flex-col">
+        {/* Project Selection Section */}
+        <div className="border-b p-4 bg-background">
+          <div className="container max-w-6xl">
+            <h1 className="text-2xl font-bold mb-2">
+              Project Selection
+            </h1>
+            <ProjectList />
+          </div>
+        </div>
+        {/* Work Items Section */}
         <div className="border-b p-4 bg-background">
           <div className="container max-w-6xl">
             <h1 className="text-2xl font-bold">
@@ -63,7 +69,6 @@ const WorkItems = () => {
             </p>
           </div>
         </div>
-        
         <div className="flex-1 flex overflow-hidden">
           {/* Work Item List */}
           <div className={`w-full ${currentWorkItem ? 'md:w-1/2 lg:w-2/5' : ''} h-full overflow-hidden flex flex-col border-r`}>
@@ -74,7 +79,6 @@ const WorkItems = () => {
               <WorkItemList />
             </div>
           </div>
-          
           {/* Work Item Detail */}
           {currentWorkItem && (
             <div className="hidden md:flex md:w-1/2 lg:w-3/5 h-full flex-col">

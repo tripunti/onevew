@@ -20,7 +20,7 @@ interface AzureDevOpsContextType {
   unselectAllProjects: () => void;
   fetchWorkItems: (projectIds: string[]) => Promise<WorkItem[]>;
   buildWorkItemHierarchy: (items: WorkItem[]) => WorkItemHierarchy[];
-  toggleItemExpansion: (itemId: number) => void;
+  toggleItemExpansion: (itemId: number | string) => void;
 }
 
 const AzureDevOpsContext = createContext<AzureDevOpsContextType | undefined>(undefined);
@@ -38,6 +38,9 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
   const [workItemHierarchy, setWorkItemHierarchy] = useState<WorkItemHierarchy[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Ensure all project IDs are strings everywhere
+  const normalizeProjectId = (id: string | number) => String(id);
 
   // Mock API calls for demo purposes
   const connect = async (connectionDetails: AzureDevOpsConnection): Promise<boolean> => {
@@ -83,51 +86,46 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
   const fetchProjects = async (): Promise<Project[]> => {
     setLoading(true);
     setError(null);
-    
     try {
-      // In a real app, fetch projects from Azure DevOps API
-      // For demo: return mock projects
-      
-      const mockProjects: Project[] = [
+      if (!connection) throw new Error('No Azure DevOps connection');
+      // Extract organization from organizationUrl
+      const orgMatch = connection.organizationUrl.match(/https:\/\/dev\.azure\.com\/([^/]+)/i);
+      if (!orgMatch) throw new Error('Invalid organization URL');
+      const organization = orgMatch[1];
+      // Fetch projects from Azure DevOps REST API
+      const response = await fetch(
+        `https://dev.azure.com/${organization}/_apis/projects?api-version=7.0`,
         {
-          id: '1',
-          name: 'Contoso Web App',
-          description: 'Main web application for Contoso',
-          url: 'https://dev.azure.com/contoso/web-app',
-          state: 'wellFormed',
-          visibility: 'private',
-          lastUpdateTime: new Date().toISOString()
-        },
-        {
-          id: '2',
-          name: 'Contoso Mobile App',
-          description: 'Mobile application for Contoso',
-          url: 'https://dev.azure.com/contoso/mobile-app',
-          state: 'wellFormed',
-          visibility: 'private',
-          lastUpdateTime: new Date().toISOString()
-        },
-        {
-          id: '3',
-          name: 'Contoso API',
-          description: 'Backend API services',
-          url: 'https://dev.azure.com/contoso/api',
-          state: 'wellFormed',
-          visibility: 'private',
-          lastUpdateTime: new Date().toISOString()
+          headers: {
+            'Authorization': `Basic ${btoa(':' + connection.personalAccessToken)}`,
+            'Content-Type': 'application/json',
+          },
         }
-      ];
-      
-      setProjects(mockProjects);
-      
-      // Select all projects by default
-      if (selectedProjects.length === 0) {
-        setSelectedProjects(mockProjects);
-        localStorage.setItem('selectedProjects', JSON.stringify(mockProjects));
+      );
+      if (!response.ok) throw new Error('Failed to fetch projects');
+      const data = await response.json();
+      const projects: Project[] = (data.value || []).map((proj: any) => ({
+        id: proj.id,
+        name: proj.name,
+        description: proj.description,
+        url: proj.url || `${connection.organizationUrl}/${proj.name}`,
+        state: proj.state,
+        visibility: proj.visibility,
+        lastUpdateTime: proj.lastUpdateTime || new Date().toISOString(),
+      }));
+      setProjects(projects);
+      // Filter selectedProjects to only real projects
+      const realProjectIds = new Set(projects.map(p => p.id));
+      const filteredSelected = selectedProjects.filter(p => realProjectIds.has(p.id));
+      if (filteredSelected.length === 0) {
+        setSelectedProjects(projects);
+        localStorage.setItem('selectedProjects', JSON.stringify(projects));
+      } else if (filteredSelected.length !== selectedProjects.length) {
+        setSelectedProjects(filteredSelected);
+        localStorage.setItem('selectedProjects', JSON.stringify(filteredSelected));
       }
-      
       setLoading(false);
-      return mockProjects;
+      return projects;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch projects';
       setError(errorMessage);
@@ -193,277 +191,240 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
 
   // Add debug logs to fetchWorkItems function
   const fetchWorkItems = async (projectIds: string[]): Promise<WorkItem[]> => {
-    if (projectIds.length === 0) return [];
-    
-    console.log("fetchWorkItems called with project IDs:", projectIds);
+    if (!connection) return [];
     setLoading(true);
     setError(null);
-    
+
     try {
-      // Fetch work items for all selected projects
-      const allWorkItems: WorkItem[] = [];
-      
-      for (const projectId of projectIds) {
-        console.log(`Generating mock work items for project ${projectId}`);
-        const projectWorkItems = generateMockWorkItems(projectId);
-        allWorkItems.push(...projectWorkItems);
+      const orgMatch = connection.organizationUrl.match(/https:\/\/dev\.azure\.com\/([^/]+)/i);
+      if (!orgMatch) throw new Error('Invalid organization URL');
+      const organization = orgMatch[1];
+
+      let allWorkItems: WorkItem[] = [];
+      const fetchedIds = new Set<string>();
+      const toFetchIds = new Set<string>();
+
+      // Only fetch for projects that exist in the current projects list
+      const selectedProjectObjs = projects.filter(p => projectIds.includes(p.id));
+      for (const project of selectedProjectObjs) {
+        const projectName = project.name;
+        // 1. Query for work item IDs using WIQL
+        const wiql = {
+          query: `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectName}' ORDER BY [System.ChangedDate] DESC`
+        };
+        console.log(`[WIQL QUERY] For project '${projectName}':`, wiql.query);
+        const wiqlUrl = `https://dev.azure.com/${organization}/${encodeURIComponent(projectName)}/_apis/wit/wiql?api-version=7.0`;
+        const wiqlResponse = await fetch(
+          wiqlUrl,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Basic ${btoa(':' + connection.personalAccessToken)}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(wiql),
+          }
+        );
+        const wiqlData = await wiqlResponse.json();
+        console.log(`[WIQL] Project: ${projectName}, URL: ${wiqlUrl}, Data:`, wiqlData);
+        const ids = (wiqlData.workItems || []).map((wi: any) => String(wi.id)).slice(0, 100); // Limit for demo
+        ids.forEach(id => toFetchIds.add(id));
       }
-      
-      console.log("Total work items generated:", allWorkItems.length);
+
+      // Recursively fetch all work items and their parents
+      let fetchDepth = 0;
+      const MAX_DEPTH = 5; // Prevent infinite loops
+      while (toFetchIds.size > 0 && fetchDepth < MAX_DEPTH) {
+        const idsToFetch = Array.from(toFetchIds).filter(id => !fetchedIds.has(id));
+        if (idsToFetch.length === 0) break;
+        // Fetch in batches of 100
+        for (let i = 0; i < idsToFetch.length; i += 100) {
+          const batch = idsToFetch.slice(i, i + 100);
+          const itemsResponse = await fetch(
+            `https://dev.azure.com/${organization}/_apis/wit/workitemsbatch?api-version=7.0`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Basic ${btoa(':' + connection.personalAccessToken)}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ ids: batch, $expand: 'relations' }),
+            }
+          );
+          const itemsData = await itemsResponse.json();
+          console.log(`[WorkItemsBatch] Batch:`, batch, 'Data:', itemsData);
+          const mappedItems: WorkItem[] = (itemsData.value || []).map((item: any) => {
+            const projectNameField = item.fields && item.fields['System.TeamProject'] ? String(item.fields['System.TeamProject']) : '';
+            const projectObj = projects.find(p => p.name === projectNameField);
+            const projectId = projectObj ? String(projectObj.id) : '';
+            return {
+              id: String(item.id),
+              rev: item.rev,
+              fields: item.fields,
+              relations: item.relations,
+              url: item.url,
+              projectRef: {
+                id: projectId,
+                name: projectNameField,
+              },
+            };
+          });
+          mappedItems.forEach(item => {
+            if (!fetchedIds.has(item.id)) {
+              allWorkItems.push(item);
+              fetchedIds.add(item.id);
+              // Find parent IDs from relations
+              if (item.relations) {
+                item.relations.forEach(rel => {
+                  if (rel.rel === 'System.LinkTypes.Hierarchy-Reverse') {
+                    const urlParts = rel.url.split('/');
+                    const parentId = String(urlParts[urlParts.length - 1]);
+                    const childId = String(item.id);
+                    if (!fetchedIds.has(parentId)) {
+                      toFetchIds.add(parentId);
+                    }
+                  }
+                });
+              }
+            }
+          });
+          // Remove fetched IDs from toFetchIds
+          batch.forEach(id => toFetchIds.delete(id));
+        }
+        fetchDepth++;
+      }
+
       setWorkItems(allWorkItems);
-      
-      // Build hierarchy with projects at the top level
-      console.log("Building work item hierarchy");
-      const hierarchy = buildWorkItemHierarchy(allWorkItems);
-      console.log("Hierarchy built:", hierarchy);
-      setWorkItemHierarchy(hierarchy);
-      
+
+      // Debug: Print all fetched work item IDs
+      const allIds = allWorkItems.map(wi => String(wi.id));
+      console.log('[DEBUG] All fetched work item IDs:', allIds);
+
+      // Debug: Print all parent IDs referenced in relations
+      const allParentIds = [];
+      allWorkItems.forEach(item => {
+        if (item.relations) {
+          item.relations.forEach(rel => {
+            if (rel.rel === 'System.LinkTypes.Hierarchy-Reverse') {
+              const urlParts = rel.url.split('/');
+              const parentId = String(urlParts[urlParts.length - 1]);
+              allParentIds.push(parentId);
+            }
+          });
+        }
+      });
+      console.log('[DEBUG] All parent IDs referenced in relations:', allParentIds);
+
+      // Debug: Print a table of each item's ID, title, and parent ID
+      const itemTable = allWorkItems.map(item => {
+        let parentId = null;
+        if (item.relations) {
+          const parentRel = item.relations.find(rel => rel.rel === 'System.LinkTypes.Hierarchy-Reverse');
+          if (parentRel) {
+            const urlParts = parentRel.url.split('/');
+            parentId = String(urlParts[urlParts.length - 1]);
+          }
+        }
+        return {
+          id: String(item.id),
+          title: item.fields && item.fields['System.Title'],
+          parentId,
+        };
+      });
+      console.table(itemTable);
+
+      // Debug: Print parent/child relationships
+      allWorkItems.forEach(item => {
+        if (item.relations) {
+          item.relations.forEach(rel => {
+            if (rel.rel === 'System.LinkTypes.Hierarchy-Reverse') {
+              const urlParts = rel.url.split('/');
+              const parentId = String(urlParts[urlParts.length - 1]);
+              console.log(`[DEBUG] Child ${item.id} ('${item.fields['System.Title']}') has parent ${parentId}`);
+            }
+          });
+        }
+      });
+
+      setWorkItemHierarchy(buildWorkItemHierarchy(allWorkItems));
       setLoading(false);
       return allWorkItems;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch work items';
-      console.error("Error fetching work items:", errorMessage);
-      setError(errorMessage);
+      setError('Failed to fetch work items');
       setLoading(false);
       return [];
     }
   };
 
-  // Helper function to generate mock work items with parent-child relationships
-  const generateMockWorkItems = (projectId: string): WorkItem[] => {
-    // Generate epics, features, user stories, and tasks
-    const workItems: WorkItem[] = [];
-    const project = projects.find(p => p.id === projectId);
-    
-    // Track the project association for each work item
-    const projectRef = {
-      id: parseInt(projectId),
-      name: project?.name || `Project ${projectId}`,
-    };
-    
-    // Create 2 epics per project
-    for (let epicIndex = 0; epicIndex < 2; epicIndex++) {
-      const epicId = parseInt(`${projectId}${epicIndex + 1}`); // e.g. project 1, epic 1 = 11
-      const epic: WorkItem = {
-        id: epicId,
-        rev: 1,
-        fields: {
-          'System.Title': `Epic ${epicId}`,
-          'System.State': 'Active',
-          'System.WorkItemType': 'Epic',
-          'System.CreatedDate': new Date().toISOString(),
-          'System.ChangedDate': new Date().toISOString(),
-          'System.Description': `This is Epic ${epicId} in ${project?.name}`,
-          'Microsoft.VSTS.Common.Priority': 1,
-          'System.TeamProject': project?.name,
-          'System.AreaPath': project?.name
-        },
-        url: `https://dev.azure.com/org/project/_apis/wit/workItems/${epicId}`,
-        relations: [
-          {
-            rel: 'System.LinkTypes.Hierarchy-Reverse',
-            url: `https://dev.azure.com/org/project/_apis/projects/${projectId}`,
-            attributes: {
-              name: 'Parent'
-            }
-          }
-        ],
-        projectRef: projectRef
-      };
-      workItems.push(epic);
-      
-      // Create 2-3 features per epic
-      for (let featureIndex = 0; featureIndex < 2 + Math.floor(Math.random() * 2); featureIndex++) {
-        const featureId = parseInt(`${epicId}${featureIndex + 1}`);
-        const feature: WorkItem = {
-          id: featureId,
-          rev: 1,
-          fields: {
-            'System.Title': `Feature ${featureId}`,
-            'System.State': ['New', 'Active', 'Resolved'][Math.floor(Math.random() * 3)],
-            'System.WorkItemType': 'Feature',
-            'System.CreatedDate': new Date().toISOString(),
-            'System.ChangedDate': new Date().toISOString(),
-            'System.Description': `This is Feature ${featureId} in ${project?.name}`,
-            'Microsoft.VSTS.Common.Priority': 2,
-            'System.TeamProject': project?.name,
-            'System.AreaPath': project?.name
-          },
-          url: `https://dev.azure.com/org/project/_apis/wit/workItems/${featureId}`,
-          relations: [
-            {
-              rel: 'System.LinkTypes.Hierarchy-Reverse',
-              url: `https://dev.azure.com/org/project/_apis/wit/workItems/${epicId}`,
-              attributes: {
-                name: 'Parent'
-              }
-            }
-          ],
-          projectRef: projectRef
-        };
-        workItems.push(feature);
-        
-        // Create 2-4 user stories per feature
-        for (let storyIndex = 0; storyIndex < 2 + Math.floor(Math.random() * 3); storyIndex++) {
-          const storyId = workItems.length + 1;
-          const userStory: WorkItem = {
-            id: storyId,
-            rev: 1,
-            fields: {
-              'System.Title': `User Story ${storyId}`,
-              'System.State': ['New', 'Active', 'Resolved', 'Closed'][Math.floor(Math.random() * 4)],
-              'System.WorkItemType': 'User Story',
-              'System.CreatedDate': new Date().toISOString(),
-              'System.ChangedDate': new Date().toISOString(),
-              'System.Description': `This is User Story ${storyId}`,
-              'Microsoft.VSTS.Common.Priority': 2
-            },
-            url: `https://dev.azure.com/org/project/_apis/wit/workItems/${storyId}`,
-            relations: [
-              {
-                rel: 'System.LinkTypes.Hierarchy-Reverse',
-                url: `https://dev.azure.com/org/project/_apis/wit/workItems/${featureId}`,
-                attributes: {
-                  name: 'Parent'
-                }
-              }
-            ]
-          };
-          workItems.push(userStory);
-          
-          // Create 1-5 tasks per user story
-          for (let taskIndex = 0; taskIndex < 1 + Math.floor(Math.random() * 5); taskIndex++) {
-            const taskId = workItems.length + 1;
-            const task: WorkItem = {
-              id: taskId,
-              rev: 1,
-              fields: {
-                'System.Title': `Task ${taskId}`,
-                'System.State': ['To Do', 'In Progress', 'Done'][Math.floor(Math.random() * 3)],
-                'System.WorkItemType': 'Task',
-                'System.CreatedDate': new Date().toISOString(),
-                'System.ChangedDate': new Date().toISOString(),
-                'System.Description': `This is Task ${taskId}`,
-                'Microsoft.VSTS.Common.Priority': 3,
-                'System.AssignedTo': {
-                  displayName: `User ${Math.floor(Math.random() * 5) + 1}`,
-                  uniqueName: `user${Math.floor(Math.random() * 5) + 1}@example.com`
-                }
-              },
-              url: `https://dev.azure.com/org/project/_apis/wit/workItems/${taskId}`,
-              relations: [
-                {
-                  rel: 'System.LinkTypes.Hierarchy-Reverse',
-                  url: `https://dev.azure.com/org/project/_apis/wit/workItems/${storyId}`,
-                  attributes: {
-                    name: 'Parent'
-                  }
-                }
-              ]
-            };
-            workItems.push(task);
-          }
-        }
-      }
-    }
-    
-    return workItems;
-  };
-
   const buildWorkItemHierarchy = (items: WorkItem[]): WorkItemHierarchy[] => {
     if (!items.length) return [];
-    
-    // Create a map of all items by ID
-    const itemsMap = new Map<number, WorkItem>();
-    items.forEach(item => itemsMap.set(item.id, item));
-    
-    // Function to find a parent ID from relations
-    const findParentId = (item: WorkItem): number | null => {
-      if (!item.relations) return null;
-      
-      const parentRelation = item.relations.find(rel => 
-        rel.rel === 'System.LinkTypes.Hierarchy-Reverse');
-      
-      if (!parentRelation) return null;
-      
-      // Extract ID from URL
-      const urlParts = parentRelation.url.split('/');
-      const parentId = parseInt(urlParts[urlParts.length - 1]);
-      return isNaN(parentId) ? null : parentId;
-    };
-    
-    // Create a map of parent to children
-    const childrenMap = new Map<number, number[]>();
-    
-    // Group work items by project first
-    const projectWorkItems = new Map<string, WorkItem[]>();
-    
+
+    // Create a map of all items by ID (as string)
+    const itemsMap = new Map<string, WorkItem>();
+    items.forEach(item => itemsMap.set(String(item.id), item));
+
+    // Build parent and children maps
+    const parentMap = new Map<string, string>(); // childId -> parentId
+    const childrenMap = new Map<string, string[]>(); // parentId -> [childId]
+
     items.forEach(item => {
-      if (item.projectRef) {
-        const projectId = item.projectRef.id.toString();
-        const projectItems = projectWorkItems.get(projectId) || [];
-        projectItems.push(item);
-        projectWorkItems.set(projectId, projectItems);
-      }
-      
-      const parentId = findParentId(item);
-      if (parentId !== null) {
-        const currentChildren = childrenMap.get(parentId) || [];
-        childrenMap.set(parentId, [...currentChildren, item.id]);
+      if (item.relations) {
+        item.relations.forEach(rel => {
+          // Parent relation
+          if (rel.rel === 'System.LinkTypes.Hierarchy-Reverse') {
+            const urlParts = rel.url.split('/');
+            const parentId = String(urlParts[urlParts.length - 1]);
+            const childId = String(item.id);
+            parentMap.set(childId, parentId);
+            if (!childrenMap.has(parentId)) childrenMap.set(parentId, []);
+            childrenMap.get(parentId)!.push(childId);
+          }
+          // Child relation (optional, for completeness)
+          if (rel.rel === 'System.LinkTypes.Hierarchy-Forward') {
+            const urlParts = rel.url.split('/');
+            const childId = String(urlParts[urlParts.length - 1]);
+            const parentId = String(item.id);
+            if (!childrenMap.has(parentId)) childrenMap.set(parentId, []);
+            childrenMap.get(parentId)!.push(childId);
+            parentMap.set(childId, parentId);
+          }
+        });
       }
     });
-    
-    // Function to build hierarchy recursively
-    const buildHierarchy = (itemId: number, level: number): WorkItemHierarchy => {
-      const item = itemsMap.get(itemId)!;
-      const children = childrenMap.get(itemId) || [];
-      
-      return {
-        item,
-        children: children
-          .map(childId => buildHierarchy(childId, level + 1))
-          .sort((a, b) => {
-            // Sort by work item type: Epics first, then Features, then User Stories, then Tasks
-            const typeOrder = {
-              'Epic': 1,
-              'Feature': 2,
-              'User Story': 3,
-              'Task': 4
-            };
-            const typeA = a.item.fields['System.WorkItemType'];
-            const typeB = b.item.fields['System.WorkItemType'];
-            
-            return (typeOrder[typeA as keyof typeof typeOrder] || 999) - 
-                   (typeOrder[typeB as keyof typeof typeOrder] || 999);
-          }),
-        level,
-        isExpanded: level < 2, // Auto-expand the first two levels
-      };
-    };
-    
-    // Build project nodes as the top level
-    const result: WorkItemHierarchy[] = [];
-    
+
+    // For each selected project, create a top-level node
+    const projectNodes: WorkItemHierarchy[] = [];
     selectedProjects.forEach(project => {
-      const projectId = parseInt(project.id);
-      const projectItems = projectWorkItems.get(project.id) || [];
-      
-      // Find epics (root items) for this project
-      const rootItems = projectItems.filter(item => {
-        const parentId = findParentId(item);
-        // Check if parent is a project or not a work item
-        return parentId === projectId || 
-               (parentId !== null && !itemsMap.has(parentId));
-      });
-      
-      if (rootItems.length > 0) {
-        // Create virtual project item
-        const projectItem: WorkItem = {
-          id: projectId,
+      const rootItems = items.filter(item =>
+        !parentMap.has(String(item.id)) &&
+        (item.projectRef && String(item.projectRef.id) === String(project.id))
+      );
+      const visited = new Set<string>();
+      // Recursively build hierarchy for work items, skipping duplicates
+      function buildHierarchy(item: WorkItem, level: number): WorkItemHierarchy | null {
+        const itemId = String(item.id);
+        if (visited.has(itemId)) return null;
+        visited.add(itemId);
+        const childrenIds = childrenMap.get(itemId) || [];
+        return {
+          item,
+          children: childrenIds
+            .map(childId => itemsMap.get(childId))
+            .filter(Boolean)
+            .map(childItem => buildHierarchy(childItem!, level + 1))
+            .filter(Boolean) as WorkItemHierarchy[],
+          level,
+          isExpanded: level < 2,
+        };
+      }
+      const children = rootItems.map(item => buildHierarchy(item, 1)).filter(Boolean) as WorkItemHierarchy[];
+      const projectNode: WorkItemHierarchy = {
+        item: {
+          id: String(project.id),
           rev: 1,
           fields: {
             'System.Title': project.name,
-            'System.State': 'Active',
+            'System.State': project.state,
             'System.WorkItemType': 'Project',
             'System.CreatedDate': project.lastUpdateTime,
             'System.ChangedDate': project.lastUpdateTime,
@@ -471,55 +432,25 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
           },
           url: project.url,
           projectRef: {
-            id: projectId,
+            id: String(project.id),
             name: project.name
           }
-        };
-        
-        // Add virtual project as a parent of root items
-        rootItems.forEach(item => {
-          if (!item.relations) item.relations = [];
-          
-          // Update or add the relation
-          const existingRelationIndex = item.relations.findIndex(rel => 
-            rel.rel === 'System.LinkTypes.Hierarchy-Reverse' && 
-            rel.url.includes(`/projects/${project.id}`));
-          
-          if (existingRelationIndex >= 0) {
-            item.relations[existingRelationIndex].url = `https://dev.azure.com/org/project/_apis/projects/${project.id}`;
-          } else {
-            item.relations.push({
-              rel: 'System.LinkTypes.Hierarchy-Reverse',
-              url: `https://dev.azure.com/org/project/_apis/projects/${project.id}`,
-              attributes: {
-                name: 'Parent'
-              }
-            });
-          }
-          
-          // Update children map
-          const currentChildren = childrenMap.get(projectId) || [];
-          if (!currentChildren.includes(item.id)) {
-            childrenMap.set(projectId, [...currentChildren, item.id]);
-          }
-        });
-        
-        // Add to items map
-        itemsMap.set(projectId, projectItem);
-        
-        // Build hierarchy from project
-        result.push(buildHierarchy(projectId, 0));
-      }
+        },
+        children,
+        level: 0,
+        isExpanded: true,
+      };
+      projectNodes.push(projectNode);
     });
-    
-    return result;
+    return projectNodes;
   };
 
-  const toggleItemExpansion = (itemId: number) => {
+  const toggleItemExpansion = (itemId: number | string) => {
+    const stringItemId = String(itemId);
     // Helper function to toggle expansion state recursively
     const toggleExpansion = (hierarchies: WorkItemHierarchy[]): WorkItemHierarchy[] => {
       return hierarchies.map(hierarchy => {
-        if (hierarchy.item.id === itemId) {
+        if (hierarchy.item.id === stringItemId) {
           return { ...hierarchy, isExpanded: !hierarchy.isExpanded };
         } else if (hierarchy.children && hierarchy.children.length > 0) {
           return { ...hierarchy, children: toggleExpansion(hierarchy.children) };
@@ -527,7 +458,6 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
         return hierarchy;
       });
     };
-    
     setWorkItemHierarchy(toggleExpansion(workItemHierarchy));
   };
   
