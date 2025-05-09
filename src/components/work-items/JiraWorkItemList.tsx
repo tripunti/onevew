@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 interface JiraIssue {
   id: string;
   key: string;
+  self: string;
   fields: {
     summary: string;
     issuetype: { name: string };
@@ -218,6 +219,7 @@ export const JiraWorkItemList: React.FC<JiraWorkItemListProps> = ({ issues, load
           const isExpanded = expanded[issue.id] ?? true;
           const type = issue.fields.issuetype.name;
           const status = issue.fields.status?.name;
+          const jiraUrl = `${issue.self.split('/rest/api/3/issue')[0]}/browse/${issue.key}`;
           return (
             <React.Fragment key={issue.id}>
               <div
@@ -243,9 +245,15 @@ export const JiraWorkItemList: React.FC<JiraWorkItemListProps> = ({ issues, load
                     <span className="mr-2 flex items-center justify-center">
                       {getIssueTypeIcon(type)}
                     </span>
-                    <span className="truncate font-medium">
+                    <a 
+                      href={jiraUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="truncate font-medium hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {issue.key} - {issue.fields.summary}
-                    </span>
+                    </a>
                     {status && (
                       <Badge variant="outline" className={`ml-2 ${getStatusStyles(status)}`}>{status}</Badge>
                     )}
