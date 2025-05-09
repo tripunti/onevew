@@ -9,7 +9,8 @@ interface AzureDevOpsContextType {
   selectedProjects: Project[];
   workItems: WorkItem[];
   workItemHierarchy: WorkItemHierarchy[];
-  loading: boolean;
+  projectLoading: boolean;
+  workItemsLoading: boolean;
   error: string | null;
   connect: (connection: AzureDevOpsConnection) => Promise<boolean>;
   disconnect: () => void;
@@ -36,7 +37,8 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
   );
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [workItemHierarchy, setWorkItemHierarchy] = useState<WorkItemHierarchy[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [projectLoading, setProjectLoading] = useState<boolean>(false);
+  const [workItemsLoading, setWorkItemsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Ensure all project IDs are strings everywhere
@@ -44,30 +46,39 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
 
   // Mock API calls for demo purposes
   const connect = async (connectionDetails: AzureDevOpsConnection): Promise<boolean> => {
-    setLoading(true);
+    setProjectLoading(true);
     setError(null);
-    
+
     try {
-      // In a real app, validate the connection with Azure DevOps API
-      // For demo: simulate a successful connection
-      
-      // Mock successful connection
-      const newConnection = {
-        ...connectionDetails,
-      };
-      
+      // Extract organization from organizationUrl
+      const orgMatch = connectionDetails.organizationUrl.match(/https:\/\/dev\.azure\.com\/([^/]+)/i);
+      if (!orgMatch) throw new Error('Invalid organization URL');
+      const organization = orgMatch[1];
+
+      // Try to fetch projects as a validation step
+      const response = await fetch(
+        `https://dev.azure.com/${organization}/_apis/projects?api-version=7.0`,
+        {
+          headers: {
+            'Authorization': `Basic ${btoa(':' + connectionDetails.personalAccessToken)}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      if (!response.ok) throw new Error('Failed to connect to Azure DevOps');
+      // If we get here, the connection is valid
+      const newConnection = { ...connectionDetails };
       localStorage.setItem('azureConnection', JSON.stringify(newConnection));
       setConnection(newConnection);
       setIsConnected(true);
-      
       toast.success("Connected to Azure DevOps");
-      setLoading(false);
+      setProjectLoading(false);
       return true;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to connect to Azure DevOps';
       setError(errorMessage);
       toast.error(errorMessage);
-      setLoading(false);
+      setProjectLoading(false);
       return false;
     }
   };
@@ -84,7 +95,7 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
   };
 
   const fetchProjects = async (): Promise<Project[]> => {
-    setLoading(true);
+    setProjectLoading(true);
     setError(null);
     try {
       if (!connection) throw new Error('No Azure DevOps connection');
@@ -124,12 +135,12 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
         setSelectedProjects(filteredSelected);
         localStorage.setItem('selectedProjects', JSON.stringify(filteredSelected));
       }
-      setLoading(false);
+      setProjectLoading(false);
       return projects;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch projects';
       setError(errorMessage);
-      setLoading(false);
+      setProjectLoading(false);
       return [];
     }
   };
@@ -192,7 +203,7 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
   // Add debug logs to fetchWorkItems function
   const fetchWorkItems = async (projectIds: string[]): Promise<WorkItem[]> => {
     if (!connection) return [];
-    setLoading(true);
+    setWorkItemsLoading(true);
     setError(null);
 
     try {
@@ -347,11 +358,11 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
       });
 
       setWorkItemHierarchy(buildWorkItemHierarchy(allWorkItems));
-      setLoading(false);
+      setWorkItemsLoading(false);
       return allWorkItems;
     } catch (err) {
       setError('Failed to fetch work items');
-      setLoading(false);
+      setWorkItemsLoading(false);
       return [];
     }
   };
@@ -489,7 +500,8 @@ export const AzureDevOpsProvider: React.FC<{ children: ReactNode }> = ({ childre
         selectedProjects,
         workItems,
         workItemHierarchy,
-        loading,
+        projectLoading,
+        workItemsLoading,
         error,
         connect,
         disconnect,

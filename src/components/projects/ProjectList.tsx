@@ -1,4 +1,3 @@
-
 import React from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,15 +6,17 @@ import { useAzureDevOps } from "@/context/AzureDevOpsContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Project } from "@/types/azure-devops";
 import { format } from "date-fns";
+import { Check, X, RefreshCw, SquareCheck, Square } from "lucide-react";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
 export const ProjectList: React.FC = () => {
-  const { projects, loading, toggleProjectSelection, selectedProjects } = useAzureDevOps();
+  const { projects, projectLoading, toggleProjectSelection, selectedProjects, selectAllProjects, unselectAllProjects } = useAzureDevOps();
   
   React.useEffect(() => {
     // This effect is left empty intentionally because fetching is handled in the context
   }, []);
   
-  if (loading) {
+  if (projectLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
         {[...Array(6)].map((_, i) => (
@@ -53,43 +54,67 @@ export const ProjectList: React.FC = () => {
   };
   
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-      {projects.map(project => (
-        <Card 
-          key={project.id} 
-          className={isProjectSelected(project.id) ? "border-primary/50 shadow-md" : ""}
-        >
-          <CardHeader>
-            <div className="flex items-start gap-2">
-              <Checkbox 
-                id={`project-${project.id}`}
-                checked={isProjectSelected(project.id)}
-                onCheckedChange={() => handleToggleProjectSelection(project)}
-              />
-              <div>
-                <CardTitle>{project.name}</CardTitle>
-                <CardDescription>
-                  {project.visibility} • Last updated {format(new Date(project.lastUpdateTime), "MMM d, yyyy")}
-                </CardDescription>
+    <>
+      <TooltipProvider>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-3xl font-bold tracking-tight">Azure DevOps Projects</h2>
+          <div className="flex gap-2 items-center">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="sm" variant="outline" onClick={selectAllProjects} disabled={projectLoading} aria-label="Select All">
+                  <SquareCheck className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Select All</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="sm" variant="outline" onClick={unselectAllProjects} disabled={projectLoading} aria-label="Unselect All">
+                  <Square className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Unselect All</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="sm" variant="outline" onClick={() => window.location.reload()} disabled={projectLoading} aria-label="Refresh">
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Refresh</TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+      </TooltipProvider>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-2">
+        {projects.map(project => (
+          <Card 
+            key={project.id} 
+            className={isProjectSelected(project.id) ? "border-primary/50 shadow-md" : ""}
+          >
+            <CardHeader className="py-2 px-3">
+              <div className="flex items-start gap-2">
+                <Checkbox 
+                  id={`project-${project.id}`}
+                  checked={isProjectSelected(project.id)}
+                  onCheckedChange={() => handleToggleProjectSelection(project)}
+                />
+                <div>
+                  <CardTitle className="text-base">{project.name}</CardTitle>
+                  <CardDescription className="text-xs">
+                    {project.visibility} • Last updated {format(new Date(project.lastUpdateTime), "MMM d, yyyy")}
+                  </CardDescription>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
-              {project.description || "No description provided."}
-            </p>
-            <div className="flex justify-end">
-              <Button 
-                variant={isProjectSelected(project.id) ? "default" : "outline"} 
-                size="sm"
-                onClick={() => handleToggleProjectSelection(project)}
-              >
-                {isProjectSelected(project.id) ? "Selected" : "Select Project"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+            </CardHeader>
+            <CardContent className="py-2 px-3">
+              <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                {project.description || "No description provided."}
+              </p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </>
   );
 };
