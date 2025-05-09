@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useAzureDevOps } from "@/context/AzureDevOpsContext";
 import { AzureDevOpsConnection } from "@/types/azure-devops";
+import { toast } from "sonner";
 
 const formSchema = z.discriminatedUnion("provider", [
   z.object({
@@ -32,6 +33,14 @@ const formSchema = z.discriminatedUnion("provider", [
 
 const JIRA_STORAGE_KEY = 'jiraConnection';
 
+export function getJiraConnection() {
+  try {
+    return JSON.parse(localStorage.getItem(JIRA_STORAGE_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
+
 export const ConnectionForm: React.FC = () => {
   const { connect, loading, connection } = useAzureDevOps();
   const [azureStatus, setAzureStatus] = useState<null | 'success' | 'error'>(null);
@@ -55,10 +64,7 @@ export const ConnectionForm: React.FC = () => {
   // Prefill Azure DevOps and Jira fields from last connection
   useEffect(() => {
     // Try to get Jira connection from localStorage
-    let jiraConnection = null;
-    try {
-      jiraConnection = JSON.parse(localStorage.getItem(JIRA_STORAGE_KEY) || 'null');
-    } catch {}
+    let jiraConnection = getJiraConnection();
 
     if (connection) {
       form.reset({
@@ -66,10 +72,10 @@ export const ConnectionForm: React.FC = () => {
         organizationUrl: connection.organizationUrl || "",
         personalAccessToken: connection.personalAccessToken || "",
         project: connection.project || "",
-        jiraBaseUrl: "",
-        jiraEmail: "",
-        jiraApiToken: "",
-        jiraProjectKey: "",
+        jiraBaseUrl: jiraConnection?.jiraBaseUrl || "",
+        jiraEmail: jiraConnection?.jiraEmail || "",
+        jiraApiToken: jiraConnection?.jiraApiToken || "",
+        jiraProjectKey: jiraConnection?.jiraProjectKey || "",
       } as z.infer<typeof formSchema>);
     } else if (jiraConnection) {
       form.reset({
@@ -101,8 +107,14 @@ export const ConnectionForm: React.FC = () => {
     try {
       const result = await connect(connection);
       setAzureStatus(result ? 'success' : 'error');
+      if (result) {
+        toast.success("Connected to Azure DevOps");
+      } else {
+        toast.error("Failed to connect to Azure DevOps. Please check your credentials.");
+      }
     } catch {
       setAzureStatus('error');
+      toast.error("Failed to connect to Azure DevOps. Please check your credentials.");
     }
   };
 
@@ -117,25 +129,31 @@ export const ConnectionForm: React.FC = () => {
       jiraProjectKey: string;
     };
     try {
-      // Try a simple Jira API call to check credentials
+      // Use the Node.js proxy for Jira API
       const response = await fetch(
-        `${values.jiraBaseUrl}/rest/api/3/myself`,
+        'http://localhost:3001/api/jira-proxy',
         {
-          headers: {
-            'Authorization': 'Basic ' + btoa(`${values.jiraEmail}:${values.jiraApiToken}`),
-            'Accept': 'application/json',
-          },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jiraBaseUrl: values.jiraBaseUrl,
+            jiraEmail: values.jiraEmail,
+            jiraApiToken: values.jiraApiToken,
+          }),
         }
       );
       if (response.ok) {
         setJiraStatus('success');
         // Save Jira connection to localStorage
         localStorage.setItem(JIRA_STORAGE_KEY, JSON.stringify(values));
+        toast.success("Connected to Jira");
       } else {
         setJiraStatus('error');
+        toast.error("Failed to connect to Jira. Please check your credentials.");
       }
     } catch {
       setJiraStatus('error');
+      toast.error("Failed to connect to Jira. Please check your credentials.");
     }
     setJiraLoading(false);
   };
@@ -216,12 +234,6 @@ export const ConnectionForm: React.FC = () => {
                     {loading ? "Connecting..." : "Connect to Azure DevOps"}
                   </Button>
                 </div>
-                {azureStatus === 'success' && (
-                  <div className="mt-2 text-green-600 text-sm">Successfully connected to Azure DevOps!</div>
-                )}
-                {azureStatus === 'error' && (
-                  <div className="mt-2 text-red-600 text-sm">Failed to connect to Azure DevOps. Please check your credentials.</div>
-                )}
               </div>
               {/* Vertical Divider */}
               <div className="hidden md:block w-px bg-muted mx-6" />
@@ -304,12 +316,6 @@ export const ConnectionForm: React.FC = () => {
                     {jiraLoading ? "Connecting..." : "Connect to Jira"}
                   </Button>
                 </div>
-                {jiraStatus === 'success' && (
-                  <div className="mt-2 text-green-600 text-sm">Successfully connected to Jira!</div>
-                )}
-                {jiraStatus === 'error' && (
-                  <div className="mt-2 text-red-600 text-sm">Failed to connect to Jira. Please check your credentials.</div>
-                )}
               </div>
             </div>
           </CardContent>
